@@ -2,6 +2,11 @@ import pg from 'pg'
 
 const { Pool } = pg
 
+// SSL configuration - set DB_SSL=true to enable, false or omit to disable
+const sslConfig = process.env.DB_SSL === 'true'
+  ? { rejectUnauthorized: false }
+  : false
+
 // Parse DATABASE_URL or use individual env vars
 let poolConfig: pg.PoolConfig
 
@@ -13,12 +18,12 @@ if (process.env.DB_HOST) {
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: sslConfig,
   }
 } else if (process.env.DATABASE_URL) {
   poolConfig = {
     connectionString: process.env.DATABASE_URL,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: sslConfig,
   }
 } else {
   throw new Error('No database configuration found. Set DATABASE_URL or individual DB_* variables.')
