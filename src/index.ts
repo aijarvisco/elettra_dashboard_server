@@ -1,16 +1,10 @@
+// Load environment variables first, before any other imports
+import './env.js'
+
 import express from 'express'
 import cors from 'cors'
-import dotenv from 'dotenv'
-import path from 'path'
-import { fileURLToPath } from 'url'
 import routes from './routes/index.js'
 import { clerkAuthMiddleware, handleAuthError } from './middleware/auth.js'
-
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-// Load .env from server directory
-dotenv.config({ path: path.resolve(__dirname, '../.env') })
 
 const app = express()
 const PORT = process.env.PORT || 3001

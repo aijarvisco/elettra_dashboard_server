@@ -96,3 +96,38 @@ export interface PaginatedResponse<T> {
   pageSize: number
   totalPages: number
 }
+
+// Contact-based response types
+export interface ContactResponse {
+  id: string
+  name?: string
+  phoneNumber: string
+  email?: string
+  sessionCount: number
+  totalMessageCount: number
+  transferred: boolean
+  lastActivityAt: string
+}
+
+export interface SessionMetadata {
+  id: string
+  createdAt: string
+  transferred: boolean
+  messageCount: number
+}
+
+export interface DocumentResponse {
+  id: string
+  sessionId: string
+  category?: string
+  imageId: string
+  link: string
+}
+
+export interface ContactDetailResponse {
+  contact: ContactResponse
+  sessions: SessionMetadata[]
+  messages: MessageResponse[]
+  knowledgeVault: KnowledgeVaultResponse[]
+  documents: DocumentResponse[]
+}
