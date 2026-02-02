@@ -7,7 +7,8 @@ import type {
   ContactResponse,
   SessionMetadata,
   ContactDetailResponse,
-  DocumentResponse
+  DocumentResponse,
+  TransferredLeadResponse
 } from '../types/index.js'
 
 export async function getConversations(
@@ -239,7 +240,8 @@ export async function getContacts(
           SELECT 1 FROM transferred_leads tl
           WHERE tl.contact_id = c.id
         ) THEN true ELSE false END as transferred,
-        MAX(s.created_at) as last_activity_at
+        MAX(s.created_at) as last_activity_at,
+        (SELECT tl.crm_id FROM transferred_leads tl WHERE tl.contact_id = c.id AND tl.crm_id IS NOT NULL LIMIT 1) as crm_id
       FROM contacts c
       JOIN sessions s ON c.id = s.contact_id
       GROUP BY c.id, c.name, c.phone_number, c.email
@@ -256,6 +258,7 @@ export async function getContacts(
       totalMessageCount: parseInt(row.total_message_count, 10),
       transferred: row.transferred,
       lastActivityAt: row.last_activity_at.toISOString(),
+      crmId: row.crm_id || undefined,
     }))
 
     return {
@@ -304,7 +307,8 @@ export async function searchContacts(
           SELECT 1 FROM transferred_leads tl
           WHERE tl.contact_id = c.id
         ) THEN true ELSE false END as transferred,
-        MAX(s.created_at) as last_activity_at
+        MAX(s.created_at) as last_activity_at,
+        (SELECT tl.crm_id FROM transferred_leads tl WHERE tl.contact_id = c.id AND tl.crm_id IS NOT NULL LIMIT 1) as crm_id
       FROM contacts c
       JOIN sessions s ON c.id = s.contact_id
       WHERE c.phone_number::text ILIKE $1 OR c.email ILIKE $1 OR c.name ILIKE $1
@@ -322,6 +326,7 @@ export async function searchContacts(
       totalMessageCount: parseInt(row.total_message_count, 10),
       transferred: row.transferred,
       lastActivityAt: row.last_activity_at.toISOString(),
+      crmId: row.crm_id || undefined,
     }))
 
     return {
@@ -465,6 +470,216 @@ export async function getContactById(id: string): Promise<ContactDetailResponse 
     }))
 
     return { contact, sessions, messages, knowledgeVault, documents }
+  } finally {
+    client.release()
+  }
+}
+
+// Transferred leads functions
+
+export async function getTransferredLeads(
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<TransferredLeadResponse>> {
+  const client = await pool.connect()
+  const offset = (page - 1) * pageSize
+
+  try {
+    // Get total count
+    const countResult = await client.query('SELECT COUNT(*) as count FROM transferred_leads')
+    const total = parseInt(countResult.rows[0].count, 10)
+
+    // Get paginated transferred leads with contact info
+    const result = await client.query(`
+      SELECT
+        tl.id,
+        tl.contact_id,
+        tl.session_id,
+        tl.qualification_status,
+        tl.summary,
+        tl.service_type,
+        tl.local_type,
+        tl.address,
+        tl.energy_power,
+        tl.electrical_panel_phtos,
+        tl.installation_site_photos,
+        tl.documents,
+        tl.cable_meters,
+        tl.crm_entrance,
+        tl.crm_id,
+        tl.created_at,
+        c.name as contact_name,
+        c.phone_number,
+        c.email,
+        s.created_at as last_activity_at
+      FROM transferred_leads tl
+      JOIN contacts c ON tl.contact_id = c.id
+      JOIN sessions s ON tl.session_id = s.id
+      ORDER BY tl.created_at DESC
+      LIMIT $1 OFFSET $2
+    `, [pageSize, offset])
+
+    const data: TransferredLeadResponse[] = result.rows.map((row) => ({
+      id: row.id.toString(),
+      contactId: row.contact_id,
+      sessionId: row.session_id,
+      contactName: row.contact_name || undefined,
+      phoneNumber: row.phone_number?.toString() || 'Unknown',
+      email: row.email || undefined,
+      qualificationStatus: row.qualification_status,
+      summary: row.summary,
+      serviceType: row.service_type || undefined,
+      localType: row.local_type || undefined,
+      address: row.address || undefined,
+      energyPower: row.energy_power || undefined,
+      electricalPanelPhotos: row.electrical_panel_phtos || undefined,
+      installationSitePhotos: row.installation_site_photos || undefined,
+      documents: row.documents || undefined,
+      cableMeters: row.cable_meters || undefined,
+      crmEntrance: row.crm_entrance,
+      crmId: row.crm_id || undefined,
+      createdAt: row.created_at.toISOString(),
+      lastActivityAt: row.last_activity_at.toISOString(),
+    }))
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    }
+  } finally {
+    client.release()
+  }
+}
+
+export async function searchTransferredLeads(
+  query: string,
+  page: number = 1,
+  pageSize: number = 20
+): Promise<PaginatedResponse<TransferredLeadResponse>> {
+  const client = await pool.connect()
+  const offset = (page - 1) * pageSize
+  const searchPattern = `%${query}%`
+
+  try {
+    // Get total count for search
+    const countResult = await client.query(`
+      SELECT COUNT(*) as count
+      FROM transferred_leads tl
+      JOIN contacts c ON tl.contact_id = c.id
+      WHERE c.phone_number::text ILIKE $1 OR c.email ILIKE $1 OR c.name ILIKE $1 OR tl.summary ILIKE $1
+    `, [searchPattern])
+    const total = parseInt(countResult.rows[0].count, 10)
+
+    // Get paginated search results
+    const result = await client.query(`
+      SELECT
+        tl.id,
+        tl.contact_id,
+        tl.session_id,
+        tl.qualification_status,
+        tl.summary,
+        tl.service_type,
+        tl.local_type,
+        tl.address,
+        tl.energy_power,
+        tl.electrical_panel_phtos,
+        tl.installation_site_photos,
+        tl.documents,
+        tl.cable_meters,
+        tl.crm_entrance,
+        tl.crm_id,
+        tl.created_at,
+        c.name as contact_name,
+        c.phone_number,
+        c.email,
+        s.created_at as last_activity_at
+      FROM transferred_leads tl
+      JOIN contacts c ON tl.contact_id = c.id
+      JOIN sessions s ON tl.session_id = s.id
+      WHERE c.phone_number::text ILIKE $1 OR c.email ILIKE $1 OR c.name ILIKE $1 OR tl.summary ILIKE $1
+      ORDER BY tl.created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [searchPattern, pageSize, offset])
+
+    const data: TransferredLeadResponse[] = result.rows.map((row) => ({
+      id: row.id.toString(),
+      contactId: row.contact_id,
+      sessionId: row.session_id,
+      contactName: row.contact_name || undefined,
+      phoneNumber: row.phone_number?.toString() || 'Unknown',
+      email: row.email || undefined,
+      qualificationStatus: row.qualification_status,
+      summary: row.summary,
+      serviceType: row.service_type || undefined,
+      localType: row.local_type || undefined,
+      address: row.address || undefined,
+      energyPower: row.energy_power || undefined,
+      electricalPanelPhotos: row.electrical_panel_phtos || undefined,
+      installationSitePhotos: row.installation_site_photos || undefined,
+      documents: row.documents || undefined,
+      cableMeters: row.cable_meters || undefined,
+      crmEntrance: row.crm_entrance,
+      crmId: row.crm_id || undefined,
+      createdAt: row.created_at.toISOString(),
+      lastActivityAt: row.last_activity_at.toISOString(),
+    }))
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+    }
+  } finally {
+    client.release()
+  }
+}
+
+export async function updateCrmId(
+  leadId: string,
+  crmId: string
+): Promise<{ success: boolean; error?: string }> {
+  const client = await pool.connect()
+
+  try {
+    const result = await client.query(`
+      UPDATE transferred_leads 
+      SET crm_id = $1, crm_entrance = true
+      WHERE id = $2
+      RETURNING id
+    `, [crmId, leadId])
+
+    if (result.rows.length === 0) {
+      return { success: false, error: 'Lead not found' }
+    }
+
+    return { success: true }
+  } catch (error) {
+    console.error('Error updating CRM ID:', error)
+    return { success: false, error: 'Database error' }
+  } finally {
+    client.release()
+  }
+}
+
+export async function getPendingLeadsCount(): Promise<number> {
+  const client = await pool.connect()
+
+  try {
+    const result = await client.query(`
+      SELECT COUNT(*) as count
+      FROM transferred_leads
+      WHERE crm_id IS NULL
+    `)
+    
+    return parseInt(result.rows[0].count, 10)
+  } catch (error) {
+    console.error('Error fetching pending leads count:', error)
+    return 0
   } finally {
     client.release()
   }

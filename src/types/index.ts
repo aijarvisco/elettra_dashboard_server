@@ -36,6 +36,12 @@ export interface TransferredLead {
   local_type?: string
   address?: string
   energy_power?: string
+  electrical_panel_phtos?: string
+  installation_site_photos?: string
+  documents?: string
+  cable_meters?: string
+  crm_entrance: boolean
+  crm_id?: string
 }
 
 export interface KnowledgeVaultItem {
@@ -107,6 +113,7 @@ export interface ContactResponse {
   totalMessageCount: number
   transferred: boolean
   lastActivityAt: string
+  crmId?: string
 }
 
 export interface SessionMetadata {
@@ -130,4 +137,27 @@ export interface ContactDetailResponse {
   messages: MessageResponse[]
   knowledgeVault: KnowledgeVaultResponse[]
   documents: DocumentResponse[]
+}
+
+export interface TransferredLeadResponse {
+  id: string
+  contactId: string
+  sessionId: string
+  contactName?: string
+  phoneNumber: string
+  email?: string
+  qualificationStatus: number
+  summary: string
+  serviceType?: string
+  localType?: string
+  address?: string
+  energyPower?: string
+  electricalPanelPhotos?: string
+  installationSitePhotos?: string
+  documents?: string
+  cableMeters?: string
+  crmEntrance: boolean
+  crmId?: string
+  createdAt: string
+  lastActivityAt: string
 }
